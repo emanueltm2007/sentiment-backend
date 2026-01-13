@@ -10,13 +10,12 @@ from nltk.tokenize import word_tokenize
 nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
 
-# Cargar modelo
+# Cargar modelo LIGERO (funciona en 512 MB RAM)
 clf = pipeline(
     "sentiment-analysis",
     model="nlptown/bert-base-multilingual-uncased-sentiment",
     tokenizer="nlptown/bert-base-multilingual-uncased-sentiment",
     top_k=None
-)
 )
 
 stop_words = set(stopwords.words('spanish'))
@@ -43,9 +42,17 @@ def analizar_sentimiento(texto):
         return {"sentimiento": "Neutro", "confianza": 0.0, "texto_limpio": "", "detalle": []}
     predicciones = clf(texto_limpio)[0]
     mejor = max(predicciones, key=lambda x: x["score"])
-    etiquetas_es = {"positive": "Positivo", "negative": "Negativo", "neutral": "Neutro"}
+    # El modelo nlptown usa etiquetas como "1 star", "2 stars", etc.
+    # Convertimos a Positivo/Negativo/Neutro
+    label = mejor["label"]
+    if "1 star" in label or "2 stars" in label:
+        sentimiento = "Negativo"
+    elif "4 stars" in label or "5 stars" in label:
+        sentimiento = "Positivo"
+    else:
+        sentimiento = "Neutro"
     return {
-        "sentimiento": etiquetas_es.get(mejor["label"], "Neutro"),
+        "sentimiento": sentimiento,
         "confianza": round(mejor["score"] * 100, 2),
         "texto_limpio": texto_limpio,
         "detalle": predicciones
