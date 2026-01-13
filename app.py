@@ -1,24 +1,22 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import re
+from nltk.sentiment import SentimentIntensityAnalyzer
 import nltk
-from transformers import pipeline
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
 
 # Descargar recursos
-nltk.download('stopwords', quiet=True)
-nltk.download('punkt', quiet=True)
+nltk.download('vader_lexicon', quiet=True)
 
-# Cargar modelo LIGERO (funciona en 512 MB RAM)
-clf = pipeline(
-    "sentiment-analysis",
-    model="nlptown/bert-base-multilingual-uncased-sentiment",
-    tokenizer="nlptown/bert-base-multilingual-uncased-sentiment",
-    top_k=None
-)
+# Inicializar analizador
+sia = SentimentIntensityAnalyzer()
 
-stop_words = set(stopwords.words('spanish'))
+# Ajustar para español (palabras comunes)
+spanish_words = {
+    'bueno': 2.0, 'malo': -2.0, 'excelente': 3.0, 'terrible': -3.0,
+    'genial': 2.5, 'horrible': -2.5, 'amor': 2.0, 'odio': -2.0,
+    'feliz': 2.0, 'triste': -2.0, 'bien': 1.5, 'mal': -1.5
+}
+sia.lexicon.update(spanish_words)
 
 def limpiar_texto(texto):
     if not texto or len(texto.strip()) == 0:
@@ -30,50 +28,38 @@ def limpiar_texto(texto):
     texto = re.sub(r'[^a-záéíóúñ\s]', '', texto)
     return ' '.join(texto.split())
 
-def extraer_palabras_clave(texto):
-    palabras = word_tokenize(texto.lower())
-    return [p for p in palabras if p not in stop_words and len(p) > 3]
-
 def analizar_sentimiento(texto):
     if not texto or len(texto.strip()) == 0:
         return {"sentimiento": "Neutro", "confianza": 0.0, "texto_limpio": "", "detalle": []}
     texto_limpio = limpiar_texto(texto)
-    if not texto_limpio:
-        return {"sentimiento": "Neutro", "confianza": 0.0, "texto_limpio": "", "detalle": []}
-    predicciones = clf(texto_limpio)[0]
-    mejor = max(predicciones, key=lambda x: x["score"])
-    # El modelo nlptown usa etiquetas como "1 star", "2 stars", etc.
-    # Convertimos a Positivo/Negativo/Neutro
-    label = mejor["label"]
-    if "1 star" in label or "2 stars" in label:
-        sentimiento = "Negativo"
-    elif "4 stars" in label or "5 stars" in label:
+    scores = sia.polarity_scores(texto_limpio)
+    compound = scores['compound']
+    if compound >= 0.05:
         sentimiento = "Positivo"
+    elif compound <= -0.05:
+        sentimiento = "Negativo"
     else:
         sentimiento = "Neutro"
+    confianza = abs(compound) * 100
     return {
         "sentimiento": sentimiento,
-        "confianza": round(mejor["score"] * 100, 2),
+        "confianza": round(confianza, 2),
         "texto_limpio": texto_limpio,
-        "detalle": predicciones
+        "detalle": scores
     }
 
 def analizar_comentarios_masivo(lista):
     resultados = []
     contadores = {"Positivo": 0, "Negativo": 0, "Neutro": 0}
-    todas_palabras = []
     for texto in lista:
         res = analizar_sentimiento(texto)
         resultados.append(res)
         contadores[res["sentimiento"]] += 1
-        todas_palabras.extend(extraer_palabras_clave(res["texto_limpio"]))
-    from collections import Counter
-    top_palabras = [{"palabra": p, "frecuencia": f} for p, f in Counter(todas_palabras).most_common(10)]
     return {
         "estadisticas": {
             "contadores": contadores,
             "total": len(lista),
-            "top_palabras": top_palabras
+            "top_palabras": []
         }
     }
 
