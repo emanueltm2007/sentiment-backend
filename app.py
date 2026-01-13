@@ -13,9 +13,10 @@ nltk.download('punkt', quiet=True)
 # Cargar modelo
 clf = pipeline(
     "sentiment-analysis",
-    model="cardiffnlp/twitter-xlm-roberta-base-sentiment",
-    tokenizer="cardiffnlp/twitter-xlm-roberta-base-sentiment",
+    model="nlptown/bert-base-multilingual-uncased-sentiment",
+    tokenizer="nlptown/bert-base-multilingual-uncased-sentiment",
     top_k=None
+)
 )
 
 stop_words = set(stopwords.words('spanish'))
